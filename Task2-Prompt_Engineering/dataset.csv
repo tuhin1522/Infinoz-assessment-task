@@ -1,0 +1,11 @@
+Service_Name,Base_Price,Timeline,Description,Max_Discount,Discount_Logic
+Samsung Galaxy Phone,900,3 days,Latest Samsung smartphone with high performance camera and battery.,10%,Offer 10% off for first-time customers only.
+Cotton Shirt,25,2 days,Comfortable formal cotton shirt suitable for office wear.,5%,Offer 5% discount if customer buys more than 2 shirts.
+Casual T-Shirt,15,2 days,Soft breathable casual t-shirt available in multiple colors.,5%,Offer 5% discount for orders of 3 or more items.
+Traditional Panjabi,40,3 days,Premium traditional Panjabi suitable for festivals and special occasions.,7%,Offer 7% discount during festive seasons.
+Programming Book,30,2 days,Educational programming book covering modern software development concepts.,5%,Offer 5% discount for students.
+Wireless Earbuds,60,3 days,Bluetooth wireless earbuds with noise cancellation and long battery life.,8%,Offer 8% discount if customer also buys a smartphone.
+Laptop Backpack,35,2 days,Durable backpack designed to carry laptops and accessories safely.,5%,Offer 5% discount for bundle purchases.
+Sports Sneakers,70,4 days,Lightweight running shoes designed for comfort and performance.,10%,Offer 10% discount if customer buys during seasonal sale.
+Smart Watch,120,3 days,Feature-rich smartwatch with health tracking and notifications.,8%,Offer 8% discount for returning customers.
+Notebook Set,10,1 day,Pack of high-quality notebooks for school or office use.,5%,Offer 5% discount when buying more than 5 notebooks.

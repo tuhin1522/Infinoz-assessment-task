@@ -1,0 +1,9 @@
+The bot's persona was upgraded from a generic chatbot to a named, warm assistant ("Aria") with a clearly defined tone — warm, human, and never pushy — because a persona drives more consistent and natural responses from the model.
+
+Seven strict behavioural rules replaced the original five, adding "ONE TOPIC AT A TIME" and "NO ASSUMPTIONS" to prevent the model from mixing conversation flows or inventing user-supplied fields like names, phone numbers, or addresses.
+
+The discovery call and order flows were restructured into explicit numbered steps with clear gates (collect → summarise → wait → confirm → output), replacing the loose instructions in v1 that allowed the model to skip steps or output structured blocks too early.
+
+Start Date and Delivery Address were added as required order fields, and the cancellation flow was expanded from a single-step output into a four-step flow that collects the customer's phone number and asks for explicit confirmation before cancelling.
+
+The structured output blocks were made more consistent and machine-parseable using pipe-separated key-value pairs with explicit end tokens (END_SESSION, END_ORDER, END_CANCELLATION), replacing the inconsistent spacing-separated format in v1 that was harder to parse reliably.

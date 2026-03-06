@@ -1,0 +1,9 @@
+1. The workflow uses a single AI Agent node (Gemini 2.5 Flash) with a carefully structured system prompt that embeds all negotiation logic directly — the model is instructed to handle first and second price pushbacks using only the discount rules from the service catalogue, preventing any hallucinated discounts and keeping negotiation state entirely inside the model's conversation memory rather than requiring external state tracking.
+
+2. Output parsing is handled by a dedicated "Code in JavaScript" node that runs regex against the raw AI output to extract labelled machine blocks (ORDER_CONFIRMED...END_ORDER, SESSION_CONFIRMED...END_SESSION, ORDER_CANCELLED...END_CANCELLED) and separate them from the human-facing reply, meaning the user only ever sees the clean conversational message while the structured data is silently routed downstream.
+
+3. Routing is driven by two values parsed from the AI output — INTENT (booking, order, cancel, inquiry) and STATUS (collecting, negotiating, awaiting_confirm, confirmed, cancelled) — which feed into a Switch node that branches the workflow into the correct path: append to the order sheet, booking sheet, inquiry sheet, or trigger the cancellation lookup flow.
+
+4. The cancellation flow is deliberately decoupled: it uses the session ID provided by the user to perform a Google Sheets lookup, then branches on whether the matched row is an order or a booking, deletes the correct row, and appends a record to a separate cancellation log — ensuring referential integrity across sheets without relying on the AI to know which sheet to target.
+
+5. A burst-buffer pattern at the webhook entry (Buffer Burst → Wait for Burst Window → Collect & Merge Burst) was added to handle rapid successive messages from the same session, merging them into a single AI call to prevent race conditions and duplicate sheet entries that would otherwise occur when a user sends multiple messages before the previous response completes.

@@ -1,0 +1,6 @@
+/__pycache__
+/venv
+/workflow.jpg
+/Task2-Prompt_Engineering/.env
+__pycache__/
+*.pyc

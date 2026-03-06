@@ -1,0 +1,2126 @@
+{
+  "name": "n8n-chatbot-final",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "902a2061-a8f8-4ffe-a674-09f99dbca86f",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        4672,
+        5888
+      ],
+      "id": "3b8ac7a9-aeb9-4ba4-95b3-2a67e4347a3e",
+      "name": "webhook-chatbot",
+      "webhookId": "902a2061-a8f8-4ffe-a674-09f99dbca86f"
+    },
+    {
+      "parameters": {
+        "jsCode": "const services = [\n  { name: \"Mobile App MVP\",  price: 15000, timeline: \"8 weeks\",  description: \"Full cross-platform flutter app development with core features.\",       maxDiscount: \"10%\", discountLogic: \"Offer 10% off for first-time clients only.\" },\n  { name: \"Web Development\", price: 10000, timeline: \"6 weeks\",  description: \"Custom React-based web application with responsive design.\",              maxDiscount: \"10%\", discountLogic: \"Offer 10% off for first-time clients only.\" },\n  { name: \"UI/UX Audit\",     price: 2500,  timeline: \"1 week\",   description: \"Comprehensive review of user journey and accessibility improvements.\",   maxDiscount: \"5%\",  discountLogic: \"Only offer 5% discount if user mentions budget constraints.\" },\n  { name: \"Cloud Migration\", price: 5000,  timeline: \"3 weeks\",  description: \"Moving legacy infrastructure to AWS or Azure with zero downtime.\",       maxDiscount: \"0%\",  discountLogic: \"No discounts allowed for this service.\" },\n  { name: \"Discovery Call\",  price: 0,     timeline: \"30 mins\",  description: \"Initial free consultation to discuss project scope and goals.\",           maxDiscount: \"N/A\", discountLogic: \"Always free — book as a discovery call session, not an order.\" }\n];\n\nconst catalogText = services.map(s =>\n  `- ${s.name}: $${s.price} | Timeline: ${s.timeline} | ${s.description} | Max Discount: ${s.maxDiscount} | Rule: ${s.discountLogic}`\n).join('\\n');\n\nreturn [{ json: { services, catalogText } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4864,
+        6064
+      ],
+      "id": "842f3479-35aa-4599-9ab8-43e417d594c8",
+      "name": "Load Service Catalog"
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ $('webhook-chatbot').first().json.body.sessionId ?? 'default-session' }}",
+        "contextWindowLength": 15
+      },
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [
+        5120,
+        6240
+      ],
+      "id": "1745c54f-e519-4371-b27a-96b577b000f5",
+      "name": "Simple Memory"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        5024,
+        6240
+      ],
+      "id": "a7c9abd9-ec21-4831-b84c-55e7dd7a30a4",
+      "name": "Google Gemini Chat Model",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "gK4qlWsHr0zU5bFj",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ '[SERVICE CATALOG]\\n' + $('Load Service Catalog').first().json.catalogText + '\\n\\n[USER MESSAGE]\\n' + $('Collect & Merge Burst').first().json.mergedMessage }}",
+        "options": {
+          "systemMessage": "### ROLE\nYou are a warm, friendly AI sales and support chatbot. Your personality is helpful, enthusiastic, and human — never robotic or cold. Your goal is to guide users through service inquiries, discovery call bookings, service orders, negotiation, confirmation, and cancellations while keeping replies short and genuine. Always acknowledge the user positively before asking for information or moving to the next step.\n\nNOTE: The SERVICE CATALOG is provided at the top of each user message under [SERVICE CATALOG]. Use ONLY that data for pricing, timelines, and discount rules. Never use general knowledge.\n\n### COMMUNICATION RULES\n1. BREVITY: Every reply must be 2-3 sentences maximum. Only confirmation summaries can be longer.\n2. FORMATTING: Use plain text only. Never use markdown, bolding, italics, bullet points, or special symbols in your replies.\n3. KNOWLEDGE: Answer only using the SERVICE CATALOG provided in the user context. If the answer is not there, politely say you do not have that information.\n4. LANGUAGE: Always respond in the same language used by the user.\n5. NO PREMATURE OUTPUT: Never output SESSION_CONFIRMED or ORDER_CONFIRMED blocks until the user gives explicit verbal confirmation to a summary.\n\n### FLOW: GENERAL INQUIRIES\nAnswer questions helpfully in 1-2 sentences using only the SERVICE CATALOG. Always end by asking if the user would like to book a discovery call or place an order for one of the services.\n\n### FLOW: DISCOVERY CALL BOOKING\n1. When a user wants to book a discovery call or schedule a consultation, respond warmly. Then ask for all details at once: Name, Email, preferred Date, Time, and Platform (e.g. Zoom, Google Meet).\n2. Once all details are provided, repeat them back in a clear summary and ask: Please confirm if everything is correct so I can finalize the booking.\n3. Only after the user confirms, say: Your booking has been successfully confirmed. Then output exactly:\n\nSESSION_CONFIRMED\nName: {name}\nEmail: {email}\nDate: {date}\nTime: {time}\nPlatform: {platform}\nEND_SESSION\n\n### FLOW: SERVICE ORDERS & NEGOTIATION\n1. When a user wants to order a service, ask for all five fields at once: product_Name, quantity, customer_name, phone, delivery_address.\n2. After receiving all fields, show the standard price and timeline from the catalog. Ask if the price works for them.\n3. NEGOTIATION — FIRST PUSHBACK: If the user says the price is too high, offer the maximum discount from the catalog for first-time clients. State the discounted price clearly and ask if that works.\n4. NEGOTIATION — SECOND PUSHBACK: If the user still finds it high, explain that is the maximum discount available but offer to reduce scope or phase features to fit their budget. Do not lower the price further beyond the catalog maximum.\n5. PRICE ACCEPTANCE: When the user accepts the price (e.g. okay, let's do it, that works), show a complete order summary and ask for explicit confirmation. This is NOT yet order confirmation.\n6. SUMMARY FORMAT: Great, here is your order summary: product: X, Name: Y, Phone: Z, quantity: N, Price: $P, delivery address: A. Please confirm if these details are correct so I can process your order.\n7. Only after the user replies with yes, confirm, or ok to the summary, say: Your order has been successfully confirmed. Then output exactly:\n\nORDER_CONFIRMED\nProduct: {product_name}\nName: {customer_name}\nPhone: {phone}\nquantity: {quantity}\nPrice: {final_price}\ndelivery_address: {delivery_address}\nEND_ORDER\n\n### FLOW: CANCELLATION\nWhen the user wants to cancel, first ask: Could you please provide your session ID so I can locate and cancel your booking or order? Do NOT output any cancellation block until the user provides their session ID.\n\nOnce the user provides their session ID, determine what they are cancelling:\n\nIMPORTANT: When you output any ORDER_CANCELLED or BOOKING_CANCELLED block, your human-facing reply in that same message must be exactly: I am processing your cancellation request, please wait. Do NOT say the cancellation was successful or confirmed.\n\nA) If the user is cancelling an ORDER (product purchase), output exactly:\n\nORDER_CANCELLED\nsession_id: {session ID provided by the user}\nreason: {reason or not specified}\nproduct_name: {product being discussed or not specified}\nEND_CANCELLED\n\nB) If the user is cancelling a BOOKING (discovery call / consultation), output exactly:\n\nBOOKING_CANCELLED\nsession_id: {session ID provided by the user}\nreason: {reason or not specified}\nEND_BOOKING_CANCELLED\n\nNever output both blocks in the same reply. Use only the one that matches what the user wants to cancel.\n\n### OUTPUT FORMAT (append to every reply without exception)\nAfter your human-facing reply, always add this metadata block on new lines:\n\nINTENT: <inquiry | booking | order | negotiation | cancel>\nSTATUS: <collecting | negotiating | awaiting_confirmation | confirmed | cancelled>\nORDER_DATA: <compact JSON of all collected fields so far, or null>\n\nThe human reply goes above. The metadata block goes below. Never mix them."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        5024,
+        6064
+      ],
+      "id": "a99999db-1dd6-46ef-8926-dfe5772a8a5c",
+      "name": "AI Agent"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Access original webhook data \nconst webhookData = $('webhook-chatbot').first().json;\nconst userMessage  = $('Collect & Merge Burst').first().json.mergedMessage ?? webhookData.body.message ?? webhookData.body.chatInput ?? '';\n\n// sessionId: must come from frontend (stable uuid per user session) \n// Streamlit sends sessionId = 'user_' + uuid4()[:8], stable for full chat\nconst sessionId = webhookData.body.sessionId ?? 'default-session';\nconst timestamp  = new Date().toISOString();\n\n// Raw AI Agent output \nconst output = $input.first().json.output ?? '';\n\n// Extract INTENT \nconst intentMatch = output.match(/INTENT:\\s*(\\w+)/i);\nconst intent = intentMatch ? intentMatch[1].toLowerCase().trim() : 'inquiry';\n\n// Extract STATUS \nconst statusMatch = output.match(/STATUS:\\s*([\\w_]+)/i);\nconst status = statusMatch ? statusMatch[1].toLowerCase().trim() : 'collecting';\n\n// Extract ORDER_DATA JSON \nconst orderDataMatch = output.match(/ORDER_DATA:\\s*(\\{[\\s\\S]*?\\})/i);\nlet orderData = null;\nif (orderDataMatch) {\n  try { orderData = JSON.parse(orderDataMatch[1]); }\n  catch (e) { orderData = null; }\n}\n\n// Extract human-facing reply (strip all metadata blocks) \nlet humanReply = output\n  .split(/\\nINTENT:/i)[0]\n  .replace(/SESSION_CONFIRMED[\\s\\S]*?END_SESSION/gi, '')\n  .replace(/ORDER_CONFIRMED[\\s\\S]*?END_ORDER/gi, '')\n  .replace(/ORDER_CANCELLED[\\s\\S]*?END_CANCELLED/gi, '')\n  .replace(/BOOKING_CANCELLED[\\s\\S]*?END_BOOKING_CANCELLED/gi, '')\n  .replace(/\\*{1,3}([^*]+)\\*{1,3}/g, '$1')\n  .replace(/^#+\\s+/gm, '')\n  .replace(/^[-*]\\s+/gm, '')\n  .replace(/[ \\t]+$/gm, '')\n  .replace(/\\n{3,}/g, '\\n\\n')\n  .trim();\n\n// ── Extract SESSION_CONFIRMED block \nconst sessionMatch = output.match(/SESSION_CONFIRMED\\n([\\s\\S]*?)END_SESSION/i);\nlet sessionData = null;\nif (sessionMatch) {\n  const lines = sessionMatch[1].trim().split('\\n');\n  sessionData = {};\n  lines.forEach(line => {\n    const colonIdx = line.indexOf(':');\n    if (colonIdx !== -1) {\n      const key = line.slice(0, colonIdx).trim().toLowerCase().replace(/\\s+/g, '_');\n      const val = line.slice(colonIdx + 1).trim();\n      if (key) sessionData[key] = val;\n    }\n  });\n}\n\n// Extract ORDER_CONFIRMED block \nconst orderConfirmedMatch = output.match(/ORDER_CONFIRMED\\n([\\s\\S]*?)END_ORDER/i);\nlet confirmedOrder = null;\nif (orderConfirmedMatch) {\n  const lines = orderConfirmedMatch[1].trim().split('\\n');\n  confirmedOrder = {};\n  lines.forEach(line => {\n    const colonIdx = line.indexOf(':');\n    if (colonIdx !== -1) {\n      const key = line.slice(0, colonIdx).trim().toLowerCase().replace(/\\s+/g, '_');\n      const val = line.slice(colonIdx + 1).trim();\n      if (key) confirmedOrder[key] = val;\n    }\n  });\n}\n\n// ── Extract ORDER_CANCELLED block \nconst cancelledMatch = output.match(/ORDER_CANCELLED\\n([\\s\\S]*?)END_CANCELLED/i);\nlet cancelledData = null;\nif (cancelledMatch) {\n  const lines = cancelledMatch[1].trim().split('\\n');\n  cancelledData = {};\n  lines.forEach(line => {\n    const colonIdx = line.indexOf(':');\n    if (colonIdx !== -1) {\n      const key = line.slice(0, colonIdx).trim().toLowerCase().replace(/\\s+/g, '_');\n      const val = line.slice(colonIdx + 1).trim();\n      if (key) cancelledData[key] = val;\n    }\n  });\n}\n\n\n// Extract BOOKING_CANCELLED block\nconst bookingCancelledMatch = output.match(/BOOKING_CANCELLED\\n([\\s\\S]*?)END_BOOKING_CANCELLED/i);\nlet bookingCancelledData = null;\nif (bookingCancelledMatch) {\n  const lines = bookingCancelledMatch[1].trim().split('\\n');\n  bookingCancelledData = {};\n  lines.forEach(line => {\n    const colonIdx = line.indexOf(':');\n    if (colonIdx !== -1) {\n      const key = line.slice(0, colonIdx).trim().toLowerCase().replace(/\\s+/g, '_');\n      const val = line.slice(colonIdx + 1).trim();\n      if (key) bookingCancelledData[key] = val;\n    }\n  });\n}\n// Override intent/status when session or order is confirmed \nconst effectiveIntent = sessionData ? 'booking' : intent;\nconst effectiveStatus = (sessionData || confirmedOrder) ? 'confirmed' : status;\n\nreturn [{\n  json: {\n    humanReply,\n    intent:         effectiveIntent,\n    status:         effectiveStatus,\n    orderData,\n    sessionData,\n    confirmedOrder,\n    cancelledData,\n    bookingCancelledData,\n    sessionId,\n    userMessage,\n    timestamp,\n    rawOutput: output\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5344,
+        6064
+      ],
+      "id": "bf24a483-4076-48ca-94d8-80c0d1064046",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({\n  reply:             $json.humanReply,\n  intent:            $json.intent,\n  status:            $json.status,\n  session_id:        $json.sessionId,\n  order_confirmed:   $json.confirmedOrder   || null,\n  session_confirmed: $json.sessionData      || null,\n  order_cancelled:   $json.cancelledData    || null\n}) }}",
+        "options": {
+          "responseCode": 200,
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        5888,
+        5552
+      ],
+      "id": "b035b34c-9a96-4b1a-9dda-fc88b437a8f0",
+      "name": "Respond to Webhook"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "if-order-confirmed-check",
+              "leftValue": "={{ $json.confirmedOrder !== null && $json.confirmedOrder !== undefined }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        5616,
+        5808
+      ],
+      "id": "b005b313-ab26-47c5-8310-39db99cd52b5",
+      "name": "IF Order Confirmed"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "if-session-confirmed-check",
+              "leftValue": "={{ $json.sessionData !== null && $json.sessionData !== undefined }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        5616,
+        5936
+      ],
+      "id": "3da03e0b-e5eb-45a4-8360-525a8ad27bea",
+      "name": "IF Session Confirmed"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "typeValidation": "loose",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "switch-order-cancel",
+                    "leftValue": "={{ $json.cancelledData !== null && $json.cancelledData !== undefined }}",
+                    "rightValue": true,
+                    "operator": {
+                      "type": "boolean",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Order Cancel"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "typeValidation": "loose",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "switch-booking-cancel",
+                    "leftValue": "={{ $json.bookingCancelledData !== null && $json.bookingCancelledData !== undefined }}",
+                    "rightValue": true,
+                    "operator": {
+                      "type": "boolean",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Booking Cancel"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [
+        5616,
+        6208
+      ],
+      "id": "8bff0db5-0de3-4244-bd1a-3a80b32ad3f4",
+      "name": "Switch Cancel Type"
+    },
+    {
+      "parameters": {
+        "url": "=https://sheets.googleapis.com/v4/spreadsheets/1_j9fMxkGmgBmr2Ye039KpMGuJ4pb6947OZymVAQs8kg/values/order",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleSheetsOAuth2Api",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        5872,
+        6080
+      ],
+      "id": "72e9ec68-dad4-4901-b080-37a72082614e",
+      "name": "Find Order Row",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "pglRiATXIgI5zDbQ",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Sheets API v4 returns:\n// { values: [ [row1col1, row1col2, ...], [row2col1, ...], ... ] }\n//\n// Sheet has a header row at row 1 (index 0). Data rows start at row 2 (index 1).\n// Column order (0-based index) based on your sheet screenshot:\n//   0: timestamp\n//   1: session_id\n//   2: product_name\n//   3: quantity\n//   4: customer_name\n//   5: phone\n//   6: delivery_address\n//   7: final_price\n//   8: status\n\nconst SESSION_ID_COL = 1; // Column B = index 1\n\nconst cancelledData = $('Code in JavaScript').first().json.cancelledData;\nconst sessionId = (cancelledData && cancelledData.session_id)\n  ? cancelledData.session_id.trim()\n  : $('Code in JavaScript').first().json.sessionId;\nconst allRows = $input.first().json.values ?? [];\n\nif (allRows.length === 0) return [{ json: { _notFound: true, _sessionId: sessionId } }];\n\nconst matched = [];\nfor (let i = 0; i < allRows.length; i++) {\n  const row = allRows[i];\n  const cellVal = String(row[SESSION_ID_COL] ?? '').trim();\n  // Skip header row (where session_id column contains the literal 'session_id')\n  if (cellVal.toLowerCase() === 'session_id' || cellVal === '') continue;\n  if (cellVal === String(sessionId).trim()) {\n    // i+1 is the real 1-based spreadsheet row (header is i=0, first data row i=1)\n    matched.push({ json: { _rowNumber: i + 1, session_id: row[SESSION_ID_COL] } });\n  }\n}\n\nif (matched.length === 0) return [{ json: { _notFound: true, _sessionId: sessionId } }];\n\n// Sort descending: delete bottom rows first to avoid index shift\nreturn matched.sort((a, b) => b.json._rowNumber - a.json._rowNumber);"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        6192,
+        6112
+      ],
+      "id": "35d3d5e6-091d-4310-b1d9-5bb37be1fe62",
+      "name": "Filter Cancel Row"
+    },
+    {
+      "parameters": {
+        "operation": "delete",
+        "documentId": {
+          "__rl": true,
+          "value": "1_j9fMxkGmgBmr2Ye039KpMGuJ4pb6947OZymVAQs8kg",
+          "mode": "list",
+          "cachedResultName": "Sales",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1_j9fMxkGmgBmr2Ye039KpMGuJ4pb6947OZymVAQs8kg/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "order",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1_j9fMxkGmgBmr2Ye039KpMGuJ4pb6947OZymVAQs8kg/edit#gid=0"
+        },
+        "startIndex": "={{ $json._rowNumber}}"
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        6592,
+        5984
+      ],
+      "id": "d4d4540c-3af8-4d60-a78d-3228058f9774",
+      "name": "Delete Order Row",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "pglRiATXIgI5zDbQ",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1_j9fMxkGmgBmr2Ye039KpMGuJ4pb6947OZymVAQs8kg",
+          "mode": "list",
+          "cachedResultName": "Sales",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1_j9fMxkGmgBmr2Ye039KpMGuJ4pb6947OZymVAQs8kg/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "order",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1_j9fMxkGmgBmr2Ye039KpMGuJ4pb6947OZymVAQs8kg/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "timestamp": "={{ $json.timestamp }}",
+            "session_id": "={{ $json.sessionId }}",
+            "product_name": "={{ $json.confirmedOrder.product }}",
+            "quantity": "={{ $json.confirmedOrder.quantity }}",
+            "customer_name": "={{ $json.confirmedOrder.name }}",
+            "phone": "={{ $json.confirmedOrder.phone }}",
+            "delivery_address": "={{ $json.confirmedOrder.delivery_address }}",
+            "final_price": "=${{ $json.confirmedOrder.price }}",
+            "status": "confirmed"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "timestamp",
+              "displayName": "timestamp",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "session_id",
+              "displayName": "session_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "product_name",
+              "displayName": "product_name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "quantity",
+              "displayName": "quantity",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "customer_name",
+              "displayName": "customer_name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "phone",
+              "displayName": "phone",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "delivery_address",
+              "displayName": "delivery_address",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "final_price",
+              "displayName": "final_price",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        5872,
+        5712
+      ],
+      "id": "822b41d1-219a-4c40-a1d0-ac1655bfd38a",
+      "name": "Append Order Sheet",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "pglRiATXIgI5zDbQ",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1_j9fMxkGmgBmr2Ye039KpMGuJ4pb6947OZymVAQs8kg",
+          "mode": "list",
+          "cachedResultName": "Sales",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1_j9fMxkGmgBmr2Ye039KpMGuJ4pb6947OZymVAQs8kg/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 381762007,
+          "mode": "list",
+          "cachedResultName": "booking",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1_j9fMxkGmgBmr2Ye039KpMGuJ4pb6947OZymVAQs8kg/edit#gid=381762007"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "timestamp": "={{ $json.timestamp }}",
+            "session_id": "={{ $json.sessionId }}",
+            "customer_name": "={{ $json.sessionData.name }}",
+            "email": "={{ $json.sessionData.email }}",
+            "date": "={{ $json.sessionData.date }}",
+            "time": "={{ $json.sessionData.time }}",
+            "platform": "={{ $json.sessionData.platform }}",
+            "status": "confirmed"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "timestamp",
+              "displayName": "timestamp",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "session_id",
+              "displayName": "session_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "customer_name",
+              "displayName": "customer_name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "email",
+              "displayName": "email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "date",
+              "displayName": "date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "time",
+              "displayName": "time",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "platform",
+              "displayName": "platform",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        5872,
+        5872
+      ],
+      "id": "b737361f-38fa-49ec-8631-66bc15736f4c",
+      "name": "Append Booking Sheet",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "pglRiATXIgI5zDbQ",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1_j9fMxkGmgBmr2Ye039KpMGuJ4pb6947OZymVAQs8kg",
+          "mode": "list",
+          "cachedResultName": "Sales",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1_j9fMxkGmgBmr2Ye039KpMGuJ4pb6947OZymVAQs8kg/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "temp_conversation",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "timestamp": "={{ $json.timestamp }}",
+            "session_id": "={{ $json.sessionId }}",
+            "user_message": "={{ $json.userMessage }}",
+            "intent": "={{ $json.intent }}",
+            "status": "={{ $json.status }}",
+            "ai_reply": "={{ $json.humanReply }}",
+            "order_data": "={{ $json.orderData ? JSON.stringify($json.orderData) : ($json.sessionData ? JSON.stringify($json.sessionData) : ($json.cancelledData ? JSON.stringify($json.cancelledData) : '')) }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "timestamp",
+              "displayName": "timestamp",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "session_id",
+              "displayName": "session_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "user_message",
+              "displayName": "user_message",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "intent",
+              "displayName": "intent",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "ai_reply",
+              "displayName": "ai_reply",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "order_data",
+              "displayName": "order_data",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        6192,
+        5552
+      ],
+      "id": "805af8d9-f2ce-4e94-934a-86123176f2b9",
+      "name": "Append Conversations Log",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "pglRiATXIgI5zDbQ",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "=https://sheets.googleapis.com/v4/spreadsheets/1_j9fMxkGmgBmr2Ye039KpMGuJ4pb6947OZymVAQs8kg/values/booking",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleSheetsOAuth2Api",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        5872,
+        6256
+      ],
+      "id": "1a0b5bd9-e193-4867-bf4a-12640da8eb1f",
+      "name": "Find Booking Row",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "pglRiATXIgI5zDbQ",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Sheets API v4 returns:\n// { values: [ [row1col1, row1col2, ...], ... ] }\n// Booking sheet has a header row at row 1 (index 0). Data rows start at row 2 (index 1).\n// Column order (matches Append Booking Sheet):\n//   0: timestamp\n//   1: session_id  ← SESSION_ID_COL\n//   2: customer_name\n//   3: email\n//   4: date\n//   5: time\n//   6: platform\n\nconst SESSION_ID_COL = 1;\nconst bookingCancelledData = $('Code in JavaScript').first().json.bookingCancelledData;\nconst sessionId = (bookingCancelledData && bookingCancelledData.session_id)\n  ? bookingCancelledData.session_id.trim()\n  : $('Code in JavaScript').first().json.sessionId;\nconst allRows = $input.first().json.values ?? [];\n\nif (allRows.length === 0) return [{ json: { _notFound: true, _sessionId: sessionId } }];\n\nconst matched = [];\nfor (let i = 0; i < allRows.length; i++) {\n  const row = allRows[i];\n  const cellVal = String(row[SESSION_ID_COL] ?? '').trim();\n  // Skip header row (where session_id column contains the literal 'session_id')\n  if (cellVal.toLowerCase() === 'session_id' || cellVal === '') continue;\n  if (cellVal === String(sessionId).trim()) {\n    // i+1 is the real 1-based spreadsheet row (header is i=0, first data row i=1)\n    matched.push({ json: { _rowNumber: i + 1, session_id: row[SESSION_ID_COL] } });\n  }\n}\n\nif (matched.length === 0) return [{ json: { _notFound: true, _sessionId: sessionId } }];\n\n// Sort descending — delete bottom rows first to avoid index shift\nreturn matched.sort((a, b) => b.json._rowNumber - a.json._rowNumber);"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        6176,
+        6304
+      ],
+      "id": "9e9339b9-f86d-4a64-a421-a52f88443f13",
+      "name": "Filter Cancel Booking Row"
+    },
+    {
+      "parameters": {
+        "operation": "delete",
+        "documentId": {
+          "__rl": true,
+          "value": "1_j9fMxkGmgBmr2Ye039KpMGuJ4pb6947OZymVAQs8kg",
+          "mode": "list",
+          "cachedResultName": "Sales",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1_j9fMxkGmgBmr2Ye039KpMGuJ4pb6947OZymVAQs8kg/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 381762007,
+          "mode": "list",
+          "cachedResultName": "booking",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1_j9fMxkGmgBmr2Ye039KpMGuJ4pb6947OZymVAQs8kg/edit#gid=381762007"
+        },
+        "startIndex": "={{ $json._rowNumber}}"
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        6592,
+        6320
+      ],
+      "id": "0f7a0be8-9947-40e9-8754-4144c5fcc250",
+      "name": "Delete Booking Row",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "pglRiATXIgI5zDbQ",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "non-cancel-check",
+              "leftValue": "={{ $json.cancelledData === null && $json.bookingCancelledData === null }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        5616,
+        5680
+      ],
+      "id": "bd4450ac-e248-4ff7-a08c-5d7e5319e77c",
+      "name": "IF Non-Cancel"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "cancel-order-row-found-check",
+              "leftValue": "={{ $json._notFound === true }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        6384,
+        6096
+      ],
+      "id": "592eb57f-5120-4eb8-98e2-d3a2a15f3b32",
+      "name": "IF Cancel Row Found"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "cancel-booking-row-found-check",
+              "leftValue": "={{ $json._notFound === true }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        6368,
+        6288
+      ],
+      "id": "9352fc66-5281-48fb-a086-2160467c5385",
+      "name": "IF Cancel Booking Row Found"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({\n  reply:           $json._notFound === true ? 'Sorry, no order was found with that session ID. Please check your session ID and try again.' : 'Your order has been successfully cancelled. If you have a reason for cancelling, feel free to share it (optional).',\n  intent:          'cancel',\n  status:          $json._notFound === true ? 'not_found' : 'cancelled',\n  session_id:      $('Code in JavaScript').first().json.sessionId,\n  order_cancelled: $json._notFound === true ? null : $('Code in JavaScript').first().json.cancelledData\n}) }}",
+        "options": {
+          "responseCode": 200,
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        6800,
+        5984
+      ],
+      "id": "76e7175a-a41a-4bfc-bc05-60882036997b",
+      "name": "Respond Cancel Result"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({\n  reply:             $json._notFound === true ? 'Sorry, no booking was found with that session ID. Please check your session ID and try again.' : 'Your booking has been successfully cancelled. If you have a reason for cancelling, feel free to share it (optional).',\n  intent:            'cancel',\n  status:            $json._notFound === true ? 'not_found' : 'cancelled',\n  session_id:        $('Code in JavaScript').first().json.sessionId,\n  booking_cancelled: $json._notFound === true ? null : $('Code in JavaScript').first().json.bookingCancelledData\n}) }}",
+        "options": {
+          "responseCode": 200,
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        6784,
+        6320
+      ],
+      "id": "7841b9ec-7b25-4b27-b090-9fae76c0f6df",
+      "name": "Respond Cancel Booking Result"
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1_j9fMxkGmgBmr2Ye039KpMGuJ4pb6947OZymVAQs8kg",
+          "mode": "list",
+          "cachedResultName": "Sales",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1_j9fMxkGmgBmr2Ye039KpMGuJ4pb6947OZymVAQs8kg/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "temp_conversation",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "timestamp": "={{ $('Code in JavaScript').first().json.timestamp }}",
+            "session_id": "={{ $('Code in JavaScript').first().json.sessionId }}",
+            "user_message": "={{ $('Code in JavaScript').first().json.userMessage }}",
+            "intent": "cancel",
+            "status": "={{ $json._notFound === true ? 'not_found' : 'cancelled' }}",
+            "ai_reply": "={{ $json._notFound === true ? 'No order/booking found for session ID: ' + ($json._sessionId || '') : 'Order/Booking cancelled successfully.' }}",
+            "order_data": "={{ $('Code in JavaScript').first().json.cancelledData ? JSON.stringify($('Code in JavaScript').first().json.cancelledData) : ($('Code in JavaScript').first().json.bookingCancelledData ? JSON.stringify($('Code in JavaScript').first().json.bookingCancelledData) : '') }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "timestamp",
+              "displayName": "timestamp",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "session_id",
+              "displayName": "session_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "user_message",
+              "displayName": "user_message",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "intent",
+              "displayName": "intent",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "ai_reply",
+              "displayName": "ai_reply",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "order_data",
+              "displayName": "order_data",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        7040,
+        6112
+      ],
+      "id": "9b711a2c-ed90-427a-9a45-6f8b85630fad",
+      "name": "Append Cancel Log",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "pglRiATXIgI5zDbQ",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Buffer Burst Message (Debounce Logic) \nconst staticData = $getWorkflowStaticData('global');\nconst body = $input.first().json.body;\nconst sessionId = body.sessionId ?? 'default-session';\nconst message = body.message ?? body.chatInput ?? '';\nconst now = Date.now();\n\n// Initialize buffer structure if needed\nif (!staticData.messageBuffer) {\n  staticData.messageBuffer = {};\n}\n\nconst buf = staticData.messageBuffer;\n\n// If no active burst OR the last message was >10s ago (burst expired), start a new burst\nif (!buf[sessionId] || (now - buf[sessionId].lastTime) > 10000) {\n  const burstId = 'burst_' + sessionId + '_' + now;\n  buf[sessionId] = {\n    messages: [message],\n    startTime: now,\n    lastTime: now,\n    burstId: burstId\n  };\n  return [{ json: { isPrimary: true, burstId, sessionId, message, timestamp: new Date().toISOString() } }];\n} else {\n  // Subsequent burst message — append to buffer, respond immediately\n  buf[sessionId].messages.push(message);\n  buf[sessionId].lastTime = now;\n  const burstId = buf[sessionId].burstId;\n  return [{ json: { isPrimary: false, burstId, sessionId, message, timestamp: new Date().toISOString() } }];\n}"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4832,
+        5888
+      ],
+      "id": "0a68edc4-7db0-4859-bb24-7730169df200",
+      "name": "Buffer Burst Message"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "is-primary-burst-check",
+              "leftValue": "={{ $json.isPrimary }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        4992,
+        5888
+      ],
+      "id": "4bd592f1-a8b9-4bbe-b2b2-9b8cc26f2d69",
+      "name": "IF Primary Burst"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({\n  reply:      '',\n  intent:     'buffering',\n  status:     'pending',\n  session_id: $json.sessionId,\n  buffering:  true\n}) }}",
+        "options": {
+          "responseCode": 200,
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        5184,
+        5744
+      ],
+      "id": "802c8d37-1485-42f3-a69b-9a92cce8f73e",
+      "name": "Respond Ack Burst"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        5184,
+        5888
+      ],
+      "id": "e8f67b25-fc27-4585-adf5-1418f39a95f4",
+      "name": "Wait for Burst Window",
+      "webhookId": "4ccb0df5-9a52-463b-9c1f-85af94cc0ae7"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ── Collect & Merge Burst Messages \nconst staticData = $getWorkflowStaticData('global');\nconst bufferData = $('Buffer Burst Message').first().json;\nconst sessionId = bufferData.sessionId;\nconst burstId = bufferData.burstId;\n\nconst buf = staticData.messageBuffer;\nlet mergedMessage = '';\n\nif (buf && buf[sessionId] && buf[sessionId].burstId === burstId) {\n  // This is still the active burst for this session — collect all and clear\n  const messages = buf[sessionId].messages;\n  mergedMessage = messages.join(' ');\n  // Clear buffer for this session so the next message starts a fresh burst\n  delete buf[sessionId];\n} else if (buf && buf[sessionId]) {\n  // A newer burst started (edge case) — just use the original message\n  mergedMessage = bufferData.message;\n} else {\n  // Buffer already cleared (e.g. only one message) — use original\n  mergedMessage = bufferData.message;\n}\n\nreturn [{ json: { sessionId, mergedMessage, timestamp: new Date().toISOString() } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4688,
+        6064
+      ],
+      "id": "adcf8536-b33c-4170-b6e4-4a198af88b6f",
+      "name": "Collect & Merge Burst"
+    },
+    {
+      "parameters": {
+        "url": "=https://sheets.googleapis.com/v4/spreadsheets/1_j9fMxkGmgBmr2Ye039KpMGuJ4pb6947OZymVAQs8kg/values/temp_conversation",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleSheetsOAuth2Api",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        6192,
+        5776
+      ],
+      "id": "8cc665d8-0955-49f0-a06f-eb72fd5776cd",
+      "name": "Read Temp Conversations",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "pglRiATXIgI5zDbQ",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const sessionId = $('Code in JavaScript').first().json.sessionId;\nconst allRows = $input.first().json.values ?? [];\n\nif (allRows.length === 0) return [{ json: { _empty: true } }];\n\nconst SESSION_ID_COL = 1;\nconst matched = [];\nfor (let i = 0; i < allRows.length; i++) {\n  const row = allRows[i];\n  const cellVal = String(row[SESSION_ID_COL] ?? '').trim();\n  if (cellVal.toLowerCase() === 'session_id' || cellVal === '') continue;\n  if (cellVal === String(sessionId).trim()) {\n    matched.push({ json: {\n      _rowNumber: i + 1,\n      timestamp: row[0] ?? '',\n      session_id: row[1] ?? '',\n      user_message: row[2] ?? '',\n      intent: row[3] ?? '',\n      status: row[4] ?? '',\n      ai_reply: row[5] ?? '',\n      order_data: row[6] ?? ''\n    }});\n  }\n}\n\nif (matched.length === 0) return [{ json: { _empty: true } }];\n\n// Sort ascending for chronological append order\nreturn matched.sort((a, b) => a.json._rowNumber - b.json._rowNumber);"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        6352,
+        5776
+      ],
+      "id": "0547df19-8be6-474b-ac0e-3a853c41a0e5",
+      "name": "Filter Temp By Session"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "has-temp-rows-check",
+              "leftValue": "={{ $json._empty }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        6512,
+        5776
+      ],
+      "id": "27513b91-5c71-4933-99ce-40a9e3c8c9db",
+      "name": "IF Has Temp Rows"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Collect ALL temp rows for this session and merge into ONE Conversations entry\nconst items = $('Filter Temp By Session').all().filter(i => !i.json._empty);\n\nif (items.length === 0) return [];\n\n// Merge all user_messages in chronological order\nconst mergedUserMessage = items\n  .map(i => (i.json.user_message ?? '').trim())\n  .filter(m => m.length > 0)\n  .join('. ');\n\n// Use first row for timestamp/session_id, last row for final status/intent/ai_reply/order_data\nconst first = items[0].json;\nconst last  = items[items.length - 1].json;\n\nreturn [{ json: {\n  timestamp:    first.timestamp,\n  session_id:   first.session_id,\n  user_message: mergedUserMessage,\n  intent:       last.intent,\n  status:       last.status,\n  ai_reply:     last.ai_reply,\n  order_data:   last.order_data\n}}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        6720,
+        5792
+      ],
+      "id": "09a2e63c-5270-405f-8318-90a9751f142d",
+      "name": "Merge Session Messages"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Format Token Usage\n// n8n LangChain Agent exposes Gemini usage in several possible paths.\n// We try each in order and fall back to text-length estimation.\n\nconst codeData   = $('Code in JavaScript').first().json;\nconst agentRaw   = $('AI Agent').first().json;\n\n// Attempt 1: native Gemini usageMetadata\nconst um = agentRaw.usageMetadata\n        ?? agentRaw.response?.usageMetadata\n        ?? agentRaw.generations?.[0]?.[0]?.generationInfo?.usageMetadata\n        ?? null;\n\n// Attempt 2: LangChain tokenUsage / llmOutput \nconst tu = agentRaw.tokenUsage\n        ?? agentRaw.llmOutput?.tokenUsage\n        ?? null;\n\nlet promptTokens     = 0;\nlet completionTokens = 0;\nlet totalTokens      = 0;\n\nif (um) {\n  // Gemini native fields\n  promptTokens     = um.promptTokenCount     ?? um.inputTokenCount      ?? 0;\n  completionTokens = um.candidatesTokenCount ?? um.outputTokenCount     ?? 0;\n  totalTokens      = um.totalTokenCount                                  ?? (promptTokens + completionTokens);\n} else if (tu) {\n  // LangChain unified format\n  promptTokens     = tu.promptTokens     ?? 0;\n  completionTokens = tu.completionTokens ?? 0;\n  totalTokens      = tu.totalTokens      ?? (promptTokens + completionTokens);\n} else {\n  // Fallback: rough estimation from text length (1 token ≈ 4 chars)\n  const promptText = '[SERVICE CATALOG]\\n' + ($('Load Service Catalog').first().json.catalogText ?? '') + '\\n\\n[USER MESSAGE]\\n' + (codeData.userMessage ?? '');\n  const replyText  = codeData.rawOutput ?? '';\n  promptTokens     = Math.ceil(promptText.length / 4);\n  completionTokens = Math.ceil(replyText.length  / 4);\n  totalTokens      = promptTokens + completionTokens;\n}\n\n// Cost: Gemini 2.0 Flash pricing (per-token)\n// Input:  $0.075  per 1M tokens  = $0.000000075 per token\n// Output: $0.30   per 1M tokens  = $0.0000003   per token\nconst INPUT_PRICE_PER_TOKEN  = 0.075  / 1_000_000;\nconst OUTPUT_PRICE_PER_TOKEN = 0.30   / 1_000_000;\nconst cost = (promptTokens * INPUT_PRICE_PER_TOKEN) + (completionTokens * OUTPUT_PRICE_PER_TOKEN);\n\nreturn [{ json: {\n  timestamp:         codeData.timestamp,\n  session_id:        codeData.sessionId,\n  user_message:      codeData.userMessage,\n  intent:            codeData.intent,\n  status:            codeData.status,\n  prompt_tokens:     promptTokens,\n  completion_tokens: completionTokens,\n  total_tokens:      totalTokens,\n  cost:              Math.round(cost * 10_000_000) / 10_000_000,  // 7 decimal places\n  model:             'gemini-flash'\n}}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5616,
+        6064
+      ],
+      "id": "f5066a0e-8697-45b0-bf7d-416009187208",
+      "name": "Format Token Usage"
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1_j9fMxkGmgBmr2Ye039KpMGuJ4pb6947OZymVAQs8kg",
+          "mode": "list",
+          "cachedResultName": "Sales",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1_j9fMxkGmgBmr2Ye039KpMGuJ4pb6947OZymVAQs8kg/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Token_Usage",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "timestamp": "={{ $json.timestamp }}",
+            "session_id": "={{ $json.session_id }}",
+            "user_message": "={{ $json.user_message }}",
+            "intent": "={{ $json.intent }}",
+            "status": "={{ $json.status }}",
+            "prompt_tokens": "={{ $json.prompt_tokens }}",
+            "completion_tokens": "={{ $json.completion_tokens }}",
+            "total_tokens": "={{ $json.total_tokens }}",
+            "cost": "={{ $json.cost }}",
+            "model": "={{ $json.model }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "timestamp",
+              "displayName": "timestamp",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "session_id",
+              "displayName": "session_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "user_message",
+              "displayName": "user_message",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "intent",
+              "displayName": "intent",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "prompt_tokens",
+              "displayName": "prompt_tokens",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "completion_tokens",
+              "displayName": "completion_tokens",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "total_tokens",
+              "displayName": "total_tokens",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "cost",
+              "displayName": "cost",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "model",
+              "displayName": "model",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        6192,
+        5968
+      ],
+      "id": "bf807061-7327-4291-87ff-7b94f42cbc75",
+      "name": "Append Token Usage Sheet",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "pglRiATXIgI5zDbQ",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "if-inquiry-check",
+              "leftValue": "={{ $json.intent }}",
+              "rightValue": "inquiry",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        5616,
+        6352
+      ],
+      "id": "28f3fe56-0c78-4c7f-ae24-d92c19330fbf",
+      "name": "IF Inquiry"
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1_j9fMxkGmgBmr2Ye039KpMGuJ4pb6947OZymVAQs8kg",
+          "mode": "list",
+          "cachedResultName": "Sales",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1_j9fMxkGmgBmr2Ye039KpMGuJ4pb6947OZymVAQs8kg/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "inquiry",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "timestamp": "={{ $json.timestamp }}",
+            "session_id": "={{ $json.sessionId }}",
+            "user_message": "={{ $json.userMessage }}",
+            "intent": "={{ $json.intent }}",
+            "status": "={{ $json.status }}",
+            "ai_reply": "={{ $json.humanReply }}",
+            "order_data": "={{ $json.orderData ? JSON.stringify($json.orderData) : '' }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "timestamp",
+              "displayName": "timestamp",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "session_id",
+              "displayName": "session_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "user_message",
+              "displayName": "user_message",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "intent",
+              "displayName": "intent",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "ai_reply",
+              "displayName": "ai_reply",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "order_data",
+              "displayName": "order_data",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        5872,
+        6416
+      ],
+      "id": "7c2c7dd9-df1e-44e1-b861-43ffe6455698",
+      "name": "Append Inquiry Sheet",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "pglRiATXIgI5zDbQ",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1_j9fMxkGmgBmr2Ye039KpMGuJ4pb6947OZymVAQs8kg",
+          "mode": "list",
+          "cachedResultName": "Sales",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1_j9fMxkGmgBmr2Ye039KpMGuJ4pb6947OZymVAQs8kg/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Conversations",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "timestamp": "={{ $json.timestamp }}",
+            "session_id": "={{ $json.session_id }}",
+            "user_message": "={{ $json.user_message }}",
+            "intent": "={{ $json.intent }}",
+            "status": "={{ $json.status }}",
+            "ai_reply": "={{ $json.ai_reply }}",
+            "order_data": "={{ $json.order_data }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "timestamp",
+              "displayName": "timestamp",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "session_id",
+              "displayName": "session_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "user_message",
+              "displayName": "user_message",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "intent",
+              "displayName": "intent",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "ai_reply",
+              "displayName": "ai_reply",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "order_data",
+              "displayName": "order_data",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        6880,
+        5792
+      ],
+      "id": "55e9b64f-388c-4975-90e3-d0b1cbedf0d8",
+      "name": "Move to Conversations Sheet",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "pglRiATXIgI5zDbQ",
+          "name": "Google Sheets account"
+        }
+      }
+    }
+  ],
+  "pinData": {
+    "webhook-chatbot": [
+      {
+        "json": {
+          "headers": {
+            "host": "localhost:5678",
+            "user-agent": "python-requests/2.32.5",
+            "accept-encoding": "gzip, deflate",
+            "accept": "*/*",
+            "connection": "keep-alive",
+            "content-length": "75",
+            "content-type": "application/json"
+          },
+          "params": {},
+          "query": {},
+          "body": {
+            "message": "What services do you offer and how long do they usually take?",
+            "sessionId": "user_7edb00e5"
+          },
+          "webhookUrl": "http://localhost:5678/webhook-test/902a2061-a8f8-4ffe-a674-09f99dbca86f",
+          "executionMode": "test"
+        }
+      }
+    ]
+  },
+  "connections": {
+    "webhook-chatbot": {
+      "main": [
+        [
+          {
+            "node": "Buffer Burst Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Buffer Burst Message": {
+      "main": [
+        [
+          {
+            "node": "IF Primary Burst",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Primary Burst": {
+      "main": [
+        [
+          {
+            "node": "Wait for Burst Window",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Ack Burst",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait for Burst Window": {
+      "main": [
+        [
+          {
+            "node": "Collect & Merge Burst",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Collect & Merge Burst": {
+      "main": [
+        [
+          {
+            "node": "Load Service Catalog",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load Service Catalog": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simple Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "IF Non-Cancel",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "IF Order Confirmed",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "IF Session Confirmed",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Switch Cancel Type",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Format Token Usage",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "IF Inquiry",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Inquiry": {
+      "main": [
+        [
+          {
+            "node": "Append Inquiry Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Token Usage": {
+      "main": [
+        [
+          {
+            "node": "Append Token Usage Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Order Confirmed": {
+      "main": [
+        [
+          {
+            "node": "Append Order Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Session Confirmed": {
+      "main": [
+        [
+          {
+            "node": "Append Booking Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find Order Row": {
+      "main": [
+        [
+          {
+            "node": "Filter Cancel Row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Cancel Row": {
+      "main": [
+        [
+          {
+            "node": "IF Cancel Row Found",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch Cancel Type": {
+      "main": [
+        [
+          {
+            "node": "Find Order Row",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Find Booking Row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find Booking Row": {
+      "main": [
+        [
+          {
+            "node": "Filter Cancel Booking Row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Cancel Booking Row": {
+      "main": [
+        [
+          {
+            "node": "IF Cancel Booking Row Found",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Non-Cancel": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Append Conversations Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Cancel Row Found": {
+      "main": [
+        [
+          {
+            "node": "Respond Cancel Result",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Append Cancel Log",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Delete Order Row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Delete Order Row": {
+      "main": [
+        [
+          {
+            "node": "Respond Cancel Result",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Append Cancel Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Cancel Booking Row Found": {
+      "main": [
+        [
+          {
+            "node": "Respond Cancel Booking Result",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Append Cancel Log",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Delete Booking Row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Delete Booking Row": {
+      "main": [
+        [
+          {
+            "node": "Respond Cancel Booking Result",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Append Cancel Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Append Order Sheet": {
+      "main": [
+        [
+          {
+            "node": "Read Temp Conversations",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Append Booking Sheet": {
+      "main": [
+        [
+          {
+            "node": "Read Temp Conversations",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Append Cancel Log": {
+      "main": [
+        [
+          {
+            "node": "Read Temp Conversations",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Temp Conversations": {
+      "main": [
+        [
+          {
+            "node": "Filter Temp By Session",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Temp By Session": {
+      "main": [
+        [
+          {
+            "node": "IF Has Temp Rows",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Has Temp Rows": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Merge Session Messages",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Session Messages": {
+      "main": [
+        [
+          {
+            "node": "Move to Conversations Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "cdd1445c-b60d-480a-960b-ddf9f4712b5c",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "64217f7f6a368f10975eb4d5b8ecc2915cc1024f1d23b0810968760650a7c427"
+  },
+  "id": "ECJDnzzc8KqlQ7lY",
+  "tags": []
+}
